@@ -72,7 +72,7 @@ class ConnectTheDots(inkex.Effect):
                 
                 dist = 2^32 - 1
                 prev_x,prev_y = 0,0
-                count_idx = 1
+                count_idx = 0
                 
                 for idx, v in enumerate(vertices):
                     x,y = self.getXY(v)
@@ -83,10 +83,7 @@ class ConnectTheDots(inkex.Effect):
                         if (dist <= min_dist):
                             prev_x,prev_y = x,y                        
                             continue
-                        else:
-                            count_idx += 1
-                    else:
-                        count_idx = idx + 1
+                    count_idx = count_idx + 1
                     
                     # create dots
                     style = {
