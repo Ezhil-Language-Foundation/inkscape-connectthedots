@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-	<_name>Connect the Dots</_name>
-	<id>github.hereticpilgrim.inkscape-connectthedots</id>
-	<dependency type="executable" location="extensions">connectthedots.py</dependency>
-	<dependency type="executable" location="extensions">inkex.py</dependency>
-	<_param name="title" type="description">Generates a "Connect the Dots" picture from the selected paths.</_param>
-	<param name="radius" type="string" _gui-text="Vertex Radius">5</param>
-	<param name="fontsize" type="string" _gui-text="Font Size">15</param>
-	<param name="hidepath" type="boolean" _gui-text="Hide path after completion">true</param>
-	<effect>
-		<object-type>all</object-type>
-		<effects-menu>
-			<submenu _name="Generate from Path"/>
-		</effects-menu>
-	</effect>
-	<script>
-		<command reldir="extensions" interpreter="python">connectthedots.py</command>
-	</script>
+    <_name>Connect the Dots</_name>
+    <id>github.hereticpilgrim.inkscape-connectthedots</id>
+    <dependency type="executable" location="extensions">connectthedots.py</dependency>
+    <dependency type="executable" location="extensions">inkex.py</dependency>
+    <_param name="title" type="description">Generates a "Connect the Dots" picture from the selected paths.</_param>
+    <param name="radius" type="string" _gui-text="Vertex Radius">5</param>
+    <param name="fontsize" type="string" _gui-text="Font Size">15</param>
+    <param name="hidepath" type="boolean" _gui-text="Hide path after completion">true</param>
+    <param name="dist" type="string" _gui-text="Minimum distance between points">-1</param>
+    <effect>
+        <object-type>all</object-type>
+        <effects-menu>
+            <submenu _name="Generate from Path"/>
+        </effects-menu>
+    </effect>
+    <script>
+        <command reldir="extensions" interpreter="python">connectthedots.py</command>
+    </script>
 </inkscape-extension>

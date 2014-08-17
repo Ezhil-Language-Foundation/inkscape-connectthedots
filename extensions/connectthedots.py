@@ -27,157 +27,179 @@ import gettext
 _ = gettext.gettext
 
 class ConnectTheDots(inkex.Effect):
-	TOP_RIGHT = 1
-	TOP_LEFT = 2
-	BOTTOM_LEFT = 3
-	BOTTOM_RIGHT = 4
-	def __init__(self):
-		inkex.Effect.__init__(self)
-		self.OptionParser.add_option('-p', '--hidepath', action = 'store',
-									 type = 'string', dest = 'hidepath', default = True,
-									 help = 'Hide the original path after completion?')
-		self.OptionParser.add_option('-r', '--radius', action = 'store',
-									 type = 'string', dest = 'radius', default = 10,
-									 help = 'Radius of the dots at every vertex of the path')
-		self.OptionParser.add_option('-f', '--fontsize', action = 'store',
-									 type = 'string', dest = 'fontsize', default = 10,
-									 help = 'Font size of the numbers')
+    TOP_RIGHT = 1
+    TOP_LEFT = 2
+    BOTTOM_LEFT = 3
+    BOTTOM_RIGHT = 4
+    def __init__(self):
+        inkex.Effect.__init__(self)
+        self.OptionParser.add_option('-p', '--hidepath', action = 'store',
+                                     type = 'string', dest = 'hidepath', default = True,
+                                     help = 'Hide the original path after completion?')
+        self.OptionParser.add_option('-r', '--radius', action = 'store',
+                                     type = 'string', dest = 'radius', default = 10,
+                                     help = 'Radius of the dots at every vertex of the path')
+        self.OptionParser.add_option('-f', '--fontsize', action = 'store',
+                                     type = 'string', dest = 'fontsize', default = 10,
+                                     help = 'Font size of the numbers')
+        self.OptionParser.add_option('-d','--dist', action = 'store',
+                                     type = 'string', dest = 'dist', default = -1, 
+                                     help = 'Minimum distance between successive points' )
+
+    def effect(self):
+        svg = self.document.getroot()
+
+        # create new layers for dots and for numbers
+        dotLayer = inkex.etree.SubElement(svg, 'g')
+        dotLayer.set(inkex.addNS('label', 'inkscape'), 'ConnectTheDots dotLayer')
+        dotLayer.set(inkex.addNS('groupmode', 'inkscape'), 'layer')
+
+        numberLayer = inkex.etree.SubElement(svg, 'g')
+        numberLayer.set(inkex.addNS('label', 'inkscape'), 'ConnectTheDots numberLayer')
+        numberLayer.set(inkex.addNS('groupmode', 'inkscape'), 'layer')
+        min_dist = float(self.options.dist)
+
+        # iterate over every path, start numbering from 1 every time
+        for id, path in self.selected.iteritems():
+            if path.tag == 'path' or path.tag == inkex.addNS('path','svg'):
+                # radius and fontsize as offsets to avoid placing numbers inside dots
+                r = float(self.options.radius)
+                f = 0.5*int(self.options.fontsize)
+
+                # iterate over vertices and draw dots on each as well as the number next to it
+                d = path.get('d')
+                vertices = simplepath.parsePath(d)
+                
+                dist = 2^32 - 1
+                prev_x,prev_y = 0,0
+                count_idx = 1
+                
+                for idx, v in enumerate(vertices):
+                    x,y = self.getXY(v)
+                    if idx > 1:
+                        dist = sqrt( (x-prev_x)**2 + (y-prev_y)**2 )
+                    
+                    if (min_dist != -1):
+                        if (dist <= min_dist):
+                            prev_x,prev_y = x,y                        
+                            continue
+                        else:
+                            count_idx += 1
+                    else:
+                        count_idx = idx + 1
+                    
+                    # create dots
+                    style = {
+                        'stroke': 'none',
+                        'stroke-width': '0',
+                        'fill': '#000000'
+                    }
+                    name = 'pbn_%i' % count_idx
+                    attributes = {
+                        'style': simplestyle.formatStyle(style),
+                        inkex.addNS('cx', 'sodipodi') : str(x),
+                        inkex.addNS('cy', 'sodipodi') : str(y),
+                        inkex.addNS('rx', 'sodipodi') : self.options.radius,
+                        inkex.addNS('ry', 'sodipodi') : self.options.radius,
+                        inkex.addNS('start', 'sodipodi') : str(0),
+                        inkex.addNS('end', 'sodipodi') : str(2*pi),
+                        inkex.addNS('open', 'sodipodi') : 'false',
+                        inkex.addNS('type', 'sodipodi') : 'arc',
+                        inkex.addNS('label','inkscape') : name
+                    }
+                    dot = inkex.etree.SubElement(dotLayer, inkex.addNS('path', 'svg'), attributes)
+
+                    if idx > 0 and idx < len(vertices)-1:
+                        # block two quadrants, one for the previous and one for the next
+                        freeQuads = self.findFreeQuadrants((x,y), self.getXY(vertices[idx-1]), self.getXY(vertices[idx+1]))
+                    else:
+                        # special case for end nodes, only block one quadrant
+                        freeQuads = self.findFreeQuadrants((x,y), self.getXY(vertices[idx-1]))
+
+                    # randomly place number in one of the free quadrants
+                    q = choice(freeQuads)
+                    if q == self.TOP_RIGHT:
+                        nx = x+2*r
+                        ny = y+2*r+f
+                        textAnchor = 'start'
+                    elif q == self.TOP_LEFT:
+                        nx = x-2*r
+                        ny = y+r+f
+                        textAnchor = 'end'
+                    elif q == self.BOTTOM_LEFT:
+                        nx = x-r
+                        ny = y-r
+                        textAnchor = 'end'
+                    else: # BOTTOM_RIGHT
+                        nx = x+r
+                        ny = y-r
+                        textAnchor = 'start'
+
+                    # create the number element
+                    number = inkex.etree.Element(inkex.addNS('text', 'svg'))
+                    number.text = str(count_idx)
+                    number.set('x', str(nx))
+                    number.set('y', str(ny))
+                    number.set('font-size', self.options.fontsize)
+                    number.set('text-anchor', textAnchor)
+                    numberLayer.append(number)
+
+                    # update previous point
+                    prev_x, prev_y = x,y
+
+                # hide the original path if specified in options
+                if self.options.hidepath == 'true':
+                    path.set('display', 'none')
+
+    
+    def getXY(self, vertex):
+        # split vertex info into command and list of parameters
+        cmd, params = vertex
+        if cmd == 'M' or cmd == 'L':
+            '''Not necessary to check for 'm' and/or 'l',
+            because pathparser returns only absolute coordinates'''
+            x,y = params[0], params[1]
+        else:
+            '''We are looking at a curved path, or cubic Bezier curve. The last
+            coordinate pair in the parameters list determine the point's position,
+            see: http://www.w3.org/TR/SVG/paths.html#PathDataCubicBezierCommands'''
+            x,y = params[-2:]
+        return (x,y)
 
 
-	def effect(self):
-		svg = self.document.getroot()
+    def findFreeQuadrants(self, current, previous, next = None):
+        '''Determines which quadrants around the current vertex are still available
+        for number placement. Returns a list of at least two free quadrants. If next
+        is None, the current vertex is treated as a start/end vertex and only one
+        vertex is considered for blocking quadrants.'''
+        freeQuads = [self.TOP_LEFT, self.TOP_RIGHT, self.BOTTOM_RIGHT, self.BOTTOM_LEFT]
+        freeQuads.remove(self.findBlockedQuadrant(current, previous))
+        if next != None:
+            q = self.findBlockedQuadrant(current, next)
+            if q in freeQuads:
+                freeQuads.remove(q)
+        return freeQuads
 
-		# create new layers for dots and for numbers
-		dotLayer = inkex.etree.SubElement(svg, 'g')
-		dotLayer.set(inkex.addNS('label', 'inkscape'), 'ConnectTheDots dotLayer')
-		dotLayer.set(inkex.addNS('groupmode', 'inkscape'), 'layer')
-
-		numberLayer = inkex.etree.SubElement(svg, 'g')
-		numberLayer.set(inkex.addNS('label', 'inkscape'), 'ConnectTheDots numberLayer')
-		numberLayer.set(inkex.addNS('groupmode', 'inkscape'), 'layer')
-
-		# iterate over every path, start numbering from 1 every time
-		for id, path in self.selected.iteritems():
-			if path.tag == 'path' or path.tag == inkex.addNS('path','svg'):
-				# radius and fontsize as offsets to avoid placing numbers inside dots
-				r = float(self.options.radius)
-				f = 0.5*int(self.options.fontsize)
-
-				# iterate over vertices and draw dots on each as well as the number next to it
-				d = path.get('d')
-				vertices = simplepath.parsePath(d)
-				for idx, v in enumerate(vertices):
-					x,y = self.getXY(v)
-
-					# create dots
-					style = {
-						'stroke': 'none',
-						'stroke-width': '0',
-						'fill': '#000000'
-					}
-					name = 'pbn_%i' % idx
-					attributes = {
-						'style': simplestyle.formatStyle(style),
-						inkex.addNS('cx', 'sodipodi') : str(x),
-						inkex.addNS('cy', 'sodipodi') : str(y),
-						inkex.addNS('rx', 'sodipodi') : self.options.radius,
-						inkex.addNS('ry', 'sodipodi') : self.options.radius,
-						inkex.addNS('start', 'sodipodi') : str(0),
-						inkex.addNS('end', 'sodipodi') : str(2*pi),
-						inkex.addNS('open', 'sodipodi') : 'false',
-						inkex.addNS('type', 'sodipodi') : 'arc',
-						inkex.addNS('label','inkscape') : name
-					}
-					dot = inkex.etree.SubElement(dotLayer, inkex.addNS('path', 'svg'), attributes)
-
-					if idx > 0 and idx < len(vertices)-1:
-						# block two quadrants, one for the previous and one for the next
-						freeQuads = self.findFreeQuadrants((x,y), self.getXY(vertices[idx-1]), self.getXY(vertices[idx+1]))
-					else:
-						# special case for end nodes, only block one quadrant
-						freeQuads = self.findFreeQuadrants((x,y), self.getXY(vertices[idx-1]))
-
-					# randomly place number in one of the free quadrants
-					q = choice(freeQuads)
-					if q == self.TOP_RIGHT:
-						nx = x+2*r
-						ny = y+2*r+f
-						textAnchor = 'start'
-					elif q == self.TOP_LEFT:
-						nx = x-2*r
-						ny = y+r+f
-						textAnchor = 'end'
-					elif q == self.BOTTOM_LEFT:
-						nx = x-r
-						ny = y-r
-						textAnchor = 'end'
-					else: # BOTTOM_RIGHT
-						nx = x+r
-						ny = y-r
-						textAnchor = 'start'
-
-					# create the number element
-					number = inkex.etree.Element(inkex.addNS('text', 'svg'))
-					number.text = str(idx+1)
-					number.set('x', str(nx))
-					number.set('y', str(ny))
-					number.set('font-size', self.options.fontsize)
-					number.set('text-anchor', textAnchor)
-					numberLayer.append(number)
-
-				# hide the original path if specified in options
-				if self.options.hidepath == 'true':
-					path.set('display', 'none')
-
-	
-	def getXY(self, vertex):
-		# split vertex info into command and list of parameters
-		cmd, params = vertex
-		if cmd == 'M' or cmd == 'L':
-			'''Not necessary to check for 'm' and/or 'l',
-			because pathparser returns only absolute coordinates'''
-			x,y = params[0], params[1]
-		else:
-			'''We are looking at a curved path, or cubic Bezier curve. The last
-			coordinate pair in the parameters list determine the point's position,
-			see: http://www.w3.org/TR/SVG/paths.html#PathDataCubicBezierCommands'''
-			x,y = params[-2:]
-		return (x,y)
-
-
-	def findFreeQuadrants(self, current, previous, next = None):
-		'''Determines which quadrants around the current vertex are still available
-		for number placement. Returns a list of at least two free quadrants. If next
-		is None, the current vertex is treated as a start/end vertex and only one
-		vertex is considered for blocking quadrants.'''
-		freeQuads = [self.TOP_LEFT, self.TOP_RIGHT, self.BOTTOM_RIGHT, self.BOTTOM_LEFT]
-		freeQuads.remove(self.findBlockedQuadrant(current, previous))
-		if next != None:
-			q = self.findBlockedQuadrant(current, next)
-			if q in freeQuads:
-				freeQuads.remove(q)
-		return freeQuads
-
-		
-	def findBlockedQuadrant(self, current, reference):
-		'''Determines which quadrant of the current point is blocked for number
-		placement by the reference point. E.g. if the reference point is in the
-		top right relative to the current point, the TOP_RIGHT quadrant will
-		not be allowed for number placement.'''
-		x1,y1 = current
-		x2,y2 = reference
-		if x2 > x1:
-			# reference is on the right side
-			if y2 > y1:
-				return self.TOP_RIGHT
-			else:
-				return self.BOTTOM_RIGHT
-		else:
-			# reference is on the right side
-			if y2 > y1:
-				return self.TOP_LEFT
-			else:
-				return self.BOTTOM_LEFT
+        
+    def findBlockedQuadrant(self, current, reference):
+        '''Determines which quadrant of the current point is blocked for number
+        placement by the reference point. E.g. if the reference point is in the
+        top right relative to the current point, the TOP_RIGHT quadrant will
+        not be allowed for number placement.'''
+        x1,y1 = current
+        x2,y2 = reference
+        if x2 > x1:
+            # reference is on the right side
+            if y2 > y1:
+                return self.TOP_RIGHT
+            else:
+                return self.BOTTOM_RIGHT
+        else:
+            # reference is on the right side
+            if y2 > y1:
+                return self.TOP_LEFT
+            else:
+                return self.BOTTOM_LEFT
 
 
 
